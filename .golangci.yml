@@ -1,0 +1,16 @@
+run:
+  deadline: 15m
+
+linters:
+  disable-all: true
+  enable:
+    - deadcode
+    - gofmt
+    - gosimple
+    - rowserrcheck
+    - ineffassign
+    - misspell
+    - govet
+    - noctx
+    - sqlclosecheck
+    - unconvert
