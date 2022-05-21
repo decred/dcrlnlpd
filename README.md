@@ -8,7 +8,7 @@ an LN channel back to the requesting client. This allows the requesting client
 to have some inbound bandwidth to receive LN payments.
 
 To create the channel, the LP charges some amount, specified as a percentage
-of che desired channel size.
+of the desired channel size.
 
 ## Building & Running
 
