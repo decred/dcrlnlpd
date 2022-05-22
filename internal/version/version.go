@@ -1,10 +1,10 @@
 // Copyright (c) 2013-2014 The btcsuite developers
-// Copyright (c) 2015-2021 The Decred developers
+// Copyright (c) 2015-2022 The Decred developers
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
 // Package version provides a single location to house the version information
-// for dcrd and other utilities provided in the same repository.
+// for dcrlnlpd and other utilities provided in the same repository.
 package version
 
 import (
@@ -49,7 +49,7 @@ var (
 	//
 	// It is defined as a variable so it can be overridden during the build
 	// process with:
-	// '-ldflags "-X github.com/decred/dcrd/internal/version.Version=fullsemver"'
+	// '-ldflags "-X github.com/decred/dcrlnlpd/internal/version.Version=fullsemver"'
 	// if needed.
 	//
 	// It MUST be a full semantic version per the semantic versioning spec or
