@@ -475,6 +475,7 @@ func (s *Server) manageChannels(ctx context.Context) error {
 		for _, c := range chans.Channels {
 			// Ignore channels where we are not the initiator.
 			if !c.Initiator {
+				s.log.Tracef("Ignoring inbound channel %s", c.ChannelPoint)
 				nonInit += 1
 				continue
 			}
@@ -482,6 +483,9 @@ func (s *Server) manageChannels(ctx context.Context) error {
 			cid := lnwire.NewShortChanIDFromInt(c.ChanId)
 			lifetime := time.Duration(bh-cid.BlockHeight) * s.chainParams.TargetTimePerBlock
 			if lifetime < s.cfg.MinChanLifetime || lifetime < s.cfg.RequiredInterval {
+				s.log.Tracef("Ignoring channel %s due to lifetime "+
+					"%s < min duration %s", c.ChannelPoint,
+					lifetime, s.cfg.MinChanLifetime)
 				beforeMinDur += 1
 				continue
 			}

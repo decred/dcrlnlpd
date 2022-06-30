@@ -210,6 +210,7 @@ func (c *config) serverConfig() (*server.Config, error) {
 		LNMacaroonPath: c.LNMacaroonPath,
 		LNNodeAddrs:    c.LNNodeAddrs,
 		RootDir:        filepath.Join(c.AppData, string(c.activeNet)),
+		Log:            srvrLog,
 
 		MinChanSize:        uint64(minChanSize),
 		MaxChanSize:        uint64(maxChanSize),
