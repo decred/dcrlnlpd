@@ -10,6 +10,11 @@ to have some inbound bandwidth to receive LN payments.
 To create the channel, the LP charges some amount, specified as a percentage
 of the desired channel size.
 
+> :warning: **NOTE**: This software takes control of the _outbound_ channels
+created by this node, such that it will close any channels that do not conform
+to its policy, even ones not created by it (e.g. manually created channels).
+See below for a discussion on the closing policy.
+
 ## Building & Running
 
 Requires Go 1.17+. Download the code, then run
@@ -23,6 +28,26 @@ $ dcrlnlpd
 
 A default config file is created in `~/.dcrlnlpd/dcrlnlpd.conf` if it does not
 exist. CLI parameters can be found by running `-h/--help`.
+
+### Channel Closing Policy
+
+The policy to decide whether to close a channel is:
+
+```
+  (totalSentAtoms / lifetime) >= (requiredSentAtoms / requiredInterval)
+```
+
+This policy is evaluated every `closepolicy.checkinterval` (default:
+1 hour) and only for channels which have a lifetime greater than
+`closepolicy.minchanlifetime`.
+
+What this means is that every time the check is evaluated, every channel
+must have had some minimum amount of atoms sent through it, otherwise it is
+closed.
+
+With the default settings, the channel must have had at least 0.001 DCR sent
+through it every 24 hours, otherwise it will be closed. This policy is easily
+tweaked by changing the appropriate config entries.
 
 ## Client
 
