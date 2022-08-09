@@ -151,6 +151,10 @@ func (c *Client) RequestChannel(ctx context.Context, channelSize uint64) error {
 		return err
 	}
 
+	if len(policy.NodeAddresses) == 0 {
+		return fmt.Errorf("remote node returned policy without public node addresses")
+	}
+
 	if c.cfg.PolicyFetched != nil {
 		err := c.cfg.PolicyFetched(policy)
 		if err != nil {
