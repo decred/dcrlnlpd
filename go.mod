@@ -1,12 +1,11 @@
 module github.com/decred/dcrlnlpd
 
-go 1.17
+go 1.18
 
 require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/decred/dcrd/chaincfg/chainhash v1.0.3
 	github.com/decred/dcrd/chaincfg/v3 v3.1.1
-	github.com/decred/dcrd/dcrutil/v3 v3.0.0-20200616182840-3baf1f590cb1
 	github.com/decred/dcrd/dcrutil/v4 v4.0.0
 	github.com/decred/dcrd/wire v1.5.0
 	github.com/decred/dcrlnd v0.3.4
@@ -45,7 +44,6 @@ require (
 	github.com/decred/dcrd/database/v3 v3.0.0 // indirect
 	github.com/decred/dcrd/dcrec v1.0.0 // indirect
 	github.com/decred/dcrd/dcrec/edwards/v2 v2.0.2 // indirect
-	github.com/decred/dcrd/dcrec/secp256k1/v3 v3.0.0-20200616182840-3baf1f590cb1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
 	github.com/decred/dcrd/dcrjson/v4 v4.0.0 // indirect
 	github.com/decred/dcrd/gcs/v3 v3.0.0 // indirect
