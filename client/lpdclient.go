@@ -3,6 +3,8 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +18,7 @@ import (
 
 type ServerPolicy = lprpc_v1.PolicyResponse
 
+// Config holds the config needed to start a new run of an LPD client.
 type Config struct {
 	// LC is the lightning client used to pay for the invoice and is the
 	// target of the created channels.
@@ -42,8 +45,14 @@ type Config struct {
 	// PendingChannel is called when the channel opened by the remote host
 	// is found as pending.
 	PendingChannel func(chanID string, capacity uint64)
+
+	// Certificates are the bytes for a PEM-encoded certificate chain used
+	// for the TLS connection.
+	Certificates []byte
 }
 
+// Client is a client to the LN Liquidity Provider. It can perform a request for
+// inbound liquidity to a remote server.
 type Client struct {
 	cfg Config
 	lc  lnrpc.LightningClient
@@ -51,9 +60,25 @@ type Client struct {
 }
 
 func New(cfg Config) (*Client, error) {
+	var tlsConfig *tls.Config
+	if len(cfg.Certificates) > 0 {
+		pool := x509.NewCertPool()
+		pool.AppendCertsFromPEM(cfg.Certificates)
+		tlsConfig = &tls.Config{
+			RootCAs: pool,
+		}
+	}
+
+	client := http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: tlsConfig,
+		},
+	}
+
 	c := &Client{
 		cfg: cfg,
 		lc:  cfg.LC,
+		lpc: client,
 	}
 	return c, nil
 }
@@ -144,6 +169,8 @@ func EstimatedInvoiceAmount(channelSize uint64, feeRate float64) uint64 {
 	return uint64(float64(channelSize) * feeRate)
 }
 
+// RequestChannel requests a new channel from the liquidity provider with the
+// specified target size (in atoms).
 func (c *Client) RequestChannel(ctx context.Context, channelSize uint64) error {
 	// Request the policy info from the remote node.
 	var policy lprpc_v1.PolicyResponse

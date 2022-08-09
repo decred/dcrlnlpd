@@ -15,10 +15,11 @@ import (
 )
 
 type config struct {
-	Address     string  `long:"addr" description:"Address of the LP server"`
-	Key         string  `long:"key" description:"Key to enable creating the channel in the LP"`
-	ChannelSize float64 `long:"chansize" description:"Channel size to create"`
-	Debug       bool    `long:"debug" description:"Log at debug level"`
+	Address        string  `long:"addr" description:"Address of the LP server"`
+	Key            string  `long:"key" description:"Key to enable creating the channel in the LP"`
+	ChannelSize    float64 `long:"chansize" description:"Channel size to create"`
+	Debug          bool    `long:"debug" description:"Log at debug level"`
+	ServerCertPath string  `long:"servercertpath" description:"Path to the server TLS cert if it's self-signed"`
 
 	// Dcrlnd Connection Options
 	LNRPCHost      string `long:"lnrpchost" description:"Server address of the dcrlnd daemon"`
@@ -58,10 +59,19 @@ func _main() error {
 	}
 	lc := lnrpc.NewLightningClient(conn)
 
+	var cert []byte
+	if cfg.ServerCertPath != "" {
+		cert, err = os.ReadFile(cfg.ServerCertPath)
+		if err != nil {
+			return fmt.Errorf("unable to read server cert file: %v", err)
+		}
+	}
+
 	ccfg := client.Config{
-		LC:      lc,
-		Address: cfg.Address,
-		Key:     cfg.Key,
+		LC:           lc,
+		Address:      cfg.Address,
+		Key:          cfg.Key,
+		Certificates: cert,
 
 		PolicyFetched: func(policy client.ServerPolicy) error {
 			estInvoice := client.EstimatedInvoiceAmount(uint64(chanSize),

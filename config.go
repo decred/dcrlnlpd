@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -143,6 +144,12 @@ type config struct {
 	Listeners []string `long:"listen" description:"Add an interface/port to listen for connections"`
 	Profile   string   `long:"profile" description:"Enable HTTP profiling on given [addr:]port -- NOTE port must be between 1024 and 65536"`
 
+	// TLS related
+
+	TLSCert    string `long:"tlscert" description:"File containing the TLS certificate"`
+	TLSKey     string `long:"tlskey" description:"File containing the TLS certificate key"`
+	DisableTLS bool   `long:"disabletls" description:"Disable TLS encryption"`
+
 	// Network
 
 	MainNet bool `long:"mainnet" description:"Use the main network"`
@@ -167,9 +174,30 @@ type config struct {
 // listeners returns the interface listeners where connections to the http
 // server should be accepted.
 func (c *config) listeners() ([]net.Listener, error) {
-	var list []net.Listener
+
+	listenFunc := func(addr string) (net.Listener, error) {
+		return net.Listen("tcp", addr)
+	}
+
+	if !c.DisableTLS {
+		keypair, err := tls.LoadX509KeyPair(c.TLSCert, c.TLSKey)
+		if err != nil {
+			return nil, err
+		}
+
+		tlsConfig := tls.Config{
+			Certificates: []tls.Certificate{keypair},
+			MinVersion:   tls.VersionTLS12,
+		}
+
+		listenFunc = func(laddr string) (net.Listener, error) {
+			return tls.Listen("tcp", laddr, &tlsConfig)
+		}
+	}
+
+	list := make([]net.Listener, 0, len(c.Listeners))
 	for _, addr := range c.Listeners {
-		l, err := net.Listen("tcp", addr)
+		l, err := listenFunc(addr)
 		if err != nil {
 			// Cancel listening on the other addresses since we'll
 			// return an error.
@@ -583,6 +611,18 @@ func loadConfig() (*config, []string, error) {
 	if cfg.ClosePolicy.RequiredInterval < blockTime {
 		return nil, nil, fmt.Errorf("closepolicy.requiredinterval cannot be smaller than "+
 			"the network target block time (%s)", blockTime)
+	}
+
+	// Verify TLS options.
+	if !cfg.DisableTLS {
+		if cfg.TLSKey == "" {
+			return nil, nil, fmt.Errorf("tlskey cannot be empty when TLS is enabled")
+		}
+		if cfg.TLSCert == "" {
+			return nil, nil, fmt.Errorf("tlscert cannot be empty when TLS is enabled")
+		}
+		cfg.TLSKey = cleanAndExpandPath(cfg.TLSKey)
+		cfg.TLSCert = cleanAndExpandPath(cfg.TLSCert)
 	}
 
 	// Initialize log rotation.  After log rotation has been initialized,
