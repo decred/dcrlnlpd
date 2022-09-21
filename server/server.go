@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -56,10 +57,9 @@ type Config struct {
 	MinChanSize        uint64
 	MaxChanSize        uint64
 	MaxNbChannels      uint
+	MinWalletBalance   dcrutil.Amount
 	CloseCheckInterval time.Duration
 	MinChanLifetime    time.Duration
-	RequiredAtomsSent  uint64
-	RequiredInterval   time.Duration
 	CreateKey          []byte
 
 	// ChanInvoiceFeeRate is the fee rate to charge for creating a channel.
@@ -450,68 +450,147 @@ func (s *Server) closeChannel(ctx context.Context, nodeID rpc.NodeID, channelPoi
 
 // manageChannels manages opened channels where the local node is the initiator.
 func (s *Server) manageChannels(ctx context.Context) error {
+	// Fetch the current wallet balance and see if we actually need to
+	// manage the channels.
+	bal, err := s.lc.WalletBalance(ctx, &lnrpc.WalletBalanceRequest{})
+	if err != nil {
+		return err
+	}
+	totalBalance := dcrutil.Amount(bal.TotalBalance)
+
+	// Also add in the amount that is already pending from previously
+	// closed channels.
+	var limboBalance dcrutil.Amount
+	pendingChans, err := s.lc.PendingChannels(ctx, &lnrpc.PendingChannelsRequest{})
+	if err != nil {
+		return err
+	}
+	for _, c := range pendingChans.PendingForceClosingChannels {
+		limboBalance += dcrutil.Amount(c.LimboBalance)
+	}
+	totalBalance += limboBalance
+
+	if totalBalance >= s.cfg.MinWalletBalance {
+		s.log.Debugf("Wallet has more coins available (total "+
+			"%.8f, limbo %.8f) than minimum (%.8f) needed "+
+			"to manage channels",
+			dcrutil.Amount(bal.TotalBalance).ToCoin(),
+			limboBalance.ToCoin(),
+			s.cfg.MinWalletBalance.ToCoin())
+		return nil
+	}
+
+	// Time to check the channels. Fetch list of channels.
+	chanList, err := s.lc.ListChannels(ctx, &lnrpc.ListChannelsRequest{})
+	if err != nil {
+		return err
+	}
+
+	s.log.Debugf("Managing %d channels looking for %s",
+		len(chanList.Channels), s.cfg.MinWalletBalance-totalBalance)
+
+	// Fetch the current block time to figure out channel lifetime.
+	info, err := s.lc.GetInfo(ctx, &lnrpc.GetInfoRequest{})
+	if err != nil {
+		return err
+	}
+	bh := info.BlockHeight
+
+	var nonInit, beforeMinDur, closing int
+
+	// Determine the "activity" score for each channel. Key is chanID.
+	chans := make([]*lnrpc.Channel, 0, len(chanList.Channels))
+	activity := make(map[uint64]chanActivityScore, len(chanList.Channels))
+	for _, c := range chanList.Channels {
+		cid := lnwire.NewShortChanIDFromInt(c.ChanId)
+
+		// Ignore channels where we are not the initiator.
+		if !c.Initiator {
+			s.log.Tracef("Ignoring inbound channel %s", c.ChannelPoint)
+			nonInit += 1
+			continue
+		}
+
+		// Ignore channels that haven't been online for long enough.
+		lifetime := time.Duration(bh-cid.BlockHeight) * s.chainParams.TargetTimePerBlock
+		if lifetime < s.cfg.MinChanLifetime {
+			s.log.Tracef("Ignoring channel %s due to lifetime "+
+				"%s < min duration %s", c.ChannelPoint,
+				lifetime, s.cfg.MinChanLifetime)
+			beforeMinDur += 1
+			continue
+		}
+
+		// Sanity check.
+		if c.Capacity == 0 {
+			s.log.Warnf("Channel without capacity: %s", c.ChannelPoint)
+			continue
+		}
+
+		// Calc activity.
+		score := channelActivity(c.TotalAtomsSent, c.Capacity, lifetime)
+		activity[c.ChanId] = score
+		chans = append(chans, c)
+
+		s.log.Tracef("Activity score for chan %s (sent: %d, "+
+			"cap: %d, lt: %s): %f", c.ChannelPoint,
+			c.TotalAtomsSent, c.Capacity,
+			lifetime, score.toPercent())
+	}
+
+	// Sort by activity score.
+	sort.Slice(chans, func(i, j int) bool {
+		scoreI := activity[chans[i].ChanId]
+		scoreJ := activity[chans[j].ChanId]
+		return scoreI < scoreJ
+	})
+
+	// Close low activity channels until we reach the minimum amount of
+	// atoms in the wallet.
+	var reclaimed dcrutil.Amount
+
+	for _, c := range chans {
+		// Time to close channel!
+		cid := lnwire.NewShortChanIDFromInt(c.ChanId)
+		lifetime := time.Duration(bh-cid.BlockHeight) * s.chainParams.TargetTimePerBlock
+		s.log.Infof("Closing channel %s with %s due to "+
+			"low activity (sent %.8f, lifetime %s, capacity %.8f)",
+			c.ChannelPoint, c.RemotePubkey,
+			dcrutil.Amount(c.TotalAtomsSent).ToCoin(),
+			lifetime, dcrutil.Amount(c.Capacity).ToCoin())
+		closing += 1
+		var nodeID rpc.NodeID
+		nodeID.FromString(c.RemotePubkey)
+		go s.closeChannel(ctx, nodeID, c.ChannelPoint)
+
+		// c.LocalBalance is not _exactly_ correct because there will
+		// be fees to close the channel and reclaim the funds back, but
+		// those are negligible compared to the channel sizes.
+		reclaimed += dcrutil.Amount(c.LocalBalance)
+		if totalBalance+reclaimed >= s.cfg.MinWalletBalance {
+			break
+		}
+	}
+
+	remained := len(chans) - closing
+	s.log.Infof("Managed channels. Non-initiator: %d, before min duration: %d "+
+		"closing: %d, remained: %d, reclaimed: %s", nonInit, beforeMinDur,
+		closing, remained, reclaimed)
+	return nil
+}
+
+// runManageChannels runs the loop for managing channels.
+func (s *Server) runManageChannels(ctx context.Context) error {
 	for {
 		select {
 		case <-time.After(s.cfg.CloseCheckInterval):
+			err := s.manageChannels(ctx)
+			if err != nil {
+				return err
+			}
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-
-		// Time to check the channels. Fetch list of channels.
-		s.log.Debugf("Managing channels")
-		chans, err := s.lc.ListChannels(ctx, &lnrpc.ListChannelsRequest{})
-		if err != nil {
-			return err
-		}
-
-		// Fetch the current block time to figure out channel lifetime.
-		info, err := s.lc.GetInfo(ctx, &lnrpc.GetInfoRequest{})
-		if err != nil {
-			return err
-		}
-		bh := info.BlockHeight
-
-		var nonInit, beforeMinDur, okActivity, closing int
-		for _, c := range chans.Channels {
-			// Ignore channels where we are not the initiator.
-			if !c.Initiator {
-				s.log.Tracef("Ignoring inbound channel %s", c.ChannelPoint)
-				nonInit += 1
-				continue
-			}
-
-			cid := lnwire.NewShortChanIDFromInt(c.ChanId)
-			lifetime := time.Duration(bh-cid.BlockHeight) * s.chainParams.TargetTimePerBlock
-			if lifetime < s.cfg.MinChanLifetime || lifetime < s.cfg.RequiredInterval {
-				s.log.Tracef("Ignoring channel %s due to lifetime "+
-					"%s < min duration %s", c.ChannelPoint,
-					lifetime, s.cfg.MinChanLifetime)
-				beforeMinDur += 1
-				continue
-			}
-
-			hadActivity := channelHadActivity(int64(s.cfg.RequiredAtomsSent),
-				c.TotalAtomsSent, s.cfg.RequiredInterval, lifetime)
-			if !hadActivity {
-				// Time to close channel!
-				s.log.Infof("Closing channel %s with %s due to "+
-					"low activity (sent %.8f, lifetime %s)",
-					c.ChannelPoint, c.RemotePubkey,
-					dcrutil.Amount(c.TotalAtomsSent).ToCoin(),
-					lifetime)
-				closing += 1
-				var nodeID rpc.NodeID
-				nodeID.FromString(c.RemotePubkey)
-				go s.closeChannel(ctx, nodeID, c.ChannelPoint)
-			} else {
-				okActivity += 1
-			}
-		}
-
-		s.log.Infof("Managed channels. Non-initiator: %d, before min duration: %d "+
-			"ok activity: %d, closing: %d", nonInit, beforeMinDur,
-			okActivity, closing)
-
 	}
 }
 
@@ -550,7 +629,7 @@ func (s *Server) Run(ctx context.Context) error {
 	})
 
 	// Close low activity channels.
-	g.Go(func() error { return s.manageChannels(ctx) })
+	g.Go(func() error { return s.runManageChannels(ctx) })
 
 	// Shutdown conn once an error occurrs. This unblocks any outstanding
 	// calls.

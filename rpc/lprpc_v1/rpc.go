@@ -30,8 +30,6 @@ type PolicyResponse struct {
 	MaxChanSize        uint64        `json:"max_chan_size"`
 	MaxNbChannels      uint          `json:"max_nb_channels"`
 	MinChanLifetime    time.Duration `json:"min_chan_lifetime"`
-	RequiredAtomsSent  uint64        `json:"required_atoms_sent"`
-	RequiredInterval   time.Duration `json:"required_interval"`
 	ChanInvoiceFeeRate float64       `json:"chan_invoice_fee_rate"`
 }
 

@@ -4,40 +4,10 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/decred/dcrd/chaincfg/chainhash"
 	"github.com/decred/dcrlnd/lnrpc"
 )
-
-// channelHadActivity returns true if the parameters means a channel has had
-// enough activity to justify remaining open.
-func channelHadActivity(requiredSentAtoms, totalSentAtoms int64,
-	requiredInterval, lifetime time.Duration) bool {
-
-	if lifetime < requiredInterval {
-		panic("lifetime cannot be smaller than required interval")
-	}
-	if lifetime == 0 {
-		panic("lifetime cannot be zero")
-	}
-	if requiredSentAtoms == 0 {
-		panic("required sent atoms cannot be zero")
-	}
-
-	// The basic equation for determining whether the channel had enough
-	// activity is:
-	//
-	//   (totalSentAtoms / lifetime) >= (requiredSentAtoms / requiredInterval)
-	//
-	// In other words, the rate of atoms sent must be higher than the
-	// required rate.
-	//
-	// By re-arranging the equation so that this can be done entirely using
-	// integer numbers, we have:
-	//
-	//  (totalSentAtoms / requiredSentAtoms) / (lifetime / requiredTime) >= 1
-	return (totalSentAtoms/requiredSentAtoms)/int64(lifetime/requiredInterval) >= 1
-}
 
 func parseStrChannelPoint(s string) (lnrpc.ChannelPoint, error) {
 	p := strings.Index(s, ":")
@@ -55,4 +25,38 @@ func parseStrChannelPoint(s string) (lnrpc.ChannelPoint, error) {
 		FundingTxid: &lnrpc.ChannelPoint_FundingTxidStr{FundingTxidStr: txid},
 		OutputIndex: uint32(idx),
 	}, nil
+}
+
+func fmtChannelPoint(cp *lnrpc.ChannelPoint) (string, error) {
+	var txid []byte
+
+	// A channel point's funding txid can be get/set as a byte slice or a
+	// string. In the case it is a string, decode it.
+	switch cp.GetFundingTxid().(type) {
+	case *lnrpc.ChannelPoint_FundingTxidBytes:
+		txid = cp.GetFundingTxidBytes()
+	case *lnrpc.ChannelPoint_FundingTxidStr:
+		s := cp.GetFundingTxidStr()
+		h, err := chainhash.NewHashFromStr(s)
+		if err != nil {
+			return "", err
+
+		}
+
+		txid = h[:]
+	}
+
+	ch, err := chainhash.NewHash(txid)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s:%d", ch, cp.GetOutputIndex()), nil
+}
+
+func mustFmtChannelPoint(cp *lnrpc.ChannelPoint) string {
+	s, err := fmtChannelPoint(cp)
+	if err != nil {
+		panic(err)
+	}
+	return s
 }

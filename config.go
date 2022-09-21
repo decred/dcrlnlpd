@@ -92,10 +92,9 @@ const (
 	defaultOpenInvoiceFeeRate  = 0.05
 	defaultOpenMaxPendingChans = 1
 
-	defaultCloseCheckInterval      = time.Hour
-	defaultCloseMinChanLifetime    = time.Hour * 24 * 7
-	defaultCloseRequiredAmountSent = 0.00100000
-	defaultCloseRequiredInterval   = time.Hour * 24
+	defaultCloseCheckInterval    = time.Hour
+	defaultCloseMinChanLifetime  = time.Hour * 24 * 7
+	defaultCloseMinWalletBalance = 1.0
 )
 
 var (
@@ -121,10 +120,9 @@ type openChanPolicyCfg struct {
 }
 
 type closeChanPolicyCfg struct {
-	CheckInterval      time.Duration `long:"checkinterval" description:"How often to check for the close policy"`
-	MinChanLifetime    time.Duration `long:"minchanlifetime" description:"Minimum amount of time the channel will be kept online"`
-	RequiredAmountSent float64       `long:"requiredamountsent" description:"How many dcr per period need to be sent for the channel to remain active"`
-	RequiredInterval   time.Duration `long:"requiredinterval" description:"The time interval used to check for the required amount of activity"`
+	CheckInterval    time.Duration `long:"checkinterval" description:"How often to check for the close policy"`
+	MinChanLifetime  time.Duration `long:"minchanlifetime" description:"Minimum amount of time the channel will be kept online"`
+	MinWalletBalance float64       `long:"minwalletbalance" description:"The minimum wallet balance below which channels will start to be closed"`
 }
 
 type config struct {
@@ -214,16 +212,16 @@ func (c *config) listeners() ([]net.Listener, error) {
 }
 
 func (c *config) serverConfig() (*server.Config, error) {
-	var minChanSize, maxChanSize, reqAtomsSent dcrutil.Amount
+	var minChanSize, maxChanSize, minWalletBal dcrutil.Amount
 	var err error
 	if minChanSize, err = dcrutil.NewAmount(c.OpenPolicy.MinChanSize); err != nil {
 		return nil, fmt.Errorf("invalid min chan size: %v", err)
 	}
 	if maxChanSize, err = dcrutil.NewAmount(c.OpenPolicy.MaxChanSize); err != nil {
-		return nil, fmt.Errorf("invalid min chan size: %v", err)
+		return nil, fmt.Errorf("invalid max chan size: %v", err)
 	}
-	if reqAtomsSent, err = dcrutil.NewAmount(c.ClosePolicy.RequiredAmountSent); err != nil {
-		return nil, fmt.Errorf("invalid required amount sent: %v", err)
+	if minWalletBal, err = dcrutil.NewAmount(c.ClosePolicy.MinWalletBalance); err != nil {
+		return nil, fmt.Errorf("invalid min wallet balance: %v", err)
 	}
 
 	var createKey []byte
@@ -244,12 +242,11 @@ func (c *config) serverConfig() (*server.Config, error) {
 		MaxChanSize:        uint64(maxChanSize),
 		MaxNbChannels:      c.OpenPolicy.MaxNbChannels,
 		MaxPendingChans:    c.OpenPolicy.MaxPendingChannels,
+		MinWalletBalance:   minWalletBal,
 		ChanInvoiceFeeRate: c.OpenPolicy.InvoiceFeeRate,
 		CreateKey:          createKey,
 		CloseCheckInterval: c.ClosePolicy.CheckInterval,
 		MinChanLifetime:    c.ClosePolicy.MinChanLifetime,
-		RequiredAtomsSent:  uint64(reqAtomsSent),
-		RequiredInterval:   c.ClosePolicy.RequiredInterval,
 	}, nil
 }
 
@@ -422,10 +419,9 @@ func loadConfig() (*config, []string, error) {
 			InvoiceFeeRate:     defaultOpenInvoiceFeeRate,
 		},
 		ClosePolicy: closeChanPolicyCfg{
-			CheckInterval:      defaultCloseCheckInterval,
-			MinChanLifetime:    defaultCloseMinChanLifetime,
-			RequiredAmountSent: defaultCloseRequiredAmountSent,
-			RequiredInterval:   defaultCloseRequiredInterval,
+			CheckInterval:    defaultCloseCheckInterval,
+			MinChanLifetime:  defaultCloseMinChanLifetime,
+			MinWalletBalance: defaultCloseMinWalletBalance,
 		},
 	}
 
@@ -605,12 +601,9 @@ func loadConfig() (*config, []string, error) {
 		return nil, nil, fmt.Errorf("closepolicy.minchanlifetime cannot be smaller than "+
 			"the network target block time (%s)", blockTime)
 	}
-	if cfg.ClosePolicy.RequiredAmountSent <= 0 {
-		return nil, nil, fmt.Errorf("closepolicy.requiredatomssent cannot be zero")
-	}
-	if cfg.ClosePolicy.RequiredInterval < blockTime {
-		return nil, nil, fmt.Errorf("closepolicy.requiredinterval cannot be smaller than "+
-			"the network target block time (%s)", blockTime)
+	if cfg.ClosePolicy.MinWalletBalance < 0 {
+		return nil, nil, errors.New("closepolicy.minWalletbalance " +
+			"cannot be smaller than zero")
 	}
 
 	// Verify TLS options.

@@ -51,8 +51,6 @@ func (v1 *V1Handler) handlePolicy(req *http.Request) (interface{}, error) {
 		MaxChanSize:        v1.cfg.MaxChanSize,
 		MaxNbChannels:      v1.cfg.MaxNbChannels,
 		MinChanLifetime:    v1.cfg.MinChanLifetime,
-		RequiredAtomsSent:  v1.cfg.RequiredAtomsSent,
-		RequiredInterval:   v1.cfg.RequiredInterval,
 		ChanInvoiceFeeRate: v1.cfg.ChanInvoiceFeeRate,
 	}
 	return res, nil
