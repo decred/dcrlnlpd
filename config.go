@@ -51,21 +51,6 @@ func (c chainNetwork) defaultListenPort() string {
 	}
 }
 
-// defaultDcrdCfg returns the default rpc connect address for the given
-// network.
-func (c chainNetwork) defaultDcrdRPCConnect() string {
-	switch c {
-	case cnMainNet:
-		return "localhost:9109"
-	case cnTestNet:
-		return "localhost:19109"
-	case cnSimNet:
-		return "localhost:19556"
-	default:
-		panic("unknown chainNetwork")
-	}
-}
-
 func (c chainNetwork) chainParams() *chaincfg.Params {
 	switch c {
 	case cnMainNet:
