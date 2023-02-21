@@ -63,7 +63,9 @@ func New(cfg Config) (*Client, error) {
 	var tlsConfig *tls.Config
 	if len(cfg.Certificates) > 0 {
 		pool := x509.NewCertPool()
-		pool.AppendCertsFromPEM(cfg.Certificates)
+		if ok := pool.AppendCertsFromPEM(cfg.Certificates); !ok {
+			return nil, fmt.Errorf("failed to parse certificates")
+		}
 		tlsConfig = &tls.Config{
 			RootCAs: pool,
 		}

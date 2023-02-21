@@ -20,7 +20,7 @@ require (
 
 require (
 	decred.org/cspp/v2 v2.0.0 // indirect
-	decred.org/dcrwallet/v2 v2.0.0 // indirect
+	decred.org/dcrwallet/v2 v2.0.8 // indirect
 	github.com/agl/ed25519 v0.0.0-20170116200512-5312a6153412 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/btcsuite/btcwallet/walletdb v1.4.0 // indirect
@@ -35,7 +35,7 @@ require (
 	github.com/decred/dcrd/bech32 v1.1.2 // indirect
 	github.com/decred/dcrd/blockchain/stake/v4 v4.0.0 // indirect
 	github.com/decred/dcrd/blockchain/standalone/v2 v2.1.0 // indirect
-	github.com/decred/dcrd/blockchain/v4 v4.0.0 // indirect
+	github.com/decred/dcrd/blockchain/v4 v4.0.2 // indirect
 	github.com/decred/dcrd/certgen v1.1.1 // indirect
 	github.com/decred/dcrd/chaincfg v1.5.2 // indirect
 	github.com/decred/dcrd/connmgr v1.1.0 // indirect
