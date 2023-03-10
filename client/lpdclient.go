@@ -174,6 +174,9 @@ func EstimatedInvoiceAmount(channelSize uint64, feeRate float64) uint64 {
 // RequestChannel requests a new channel from the liquidity provider with the
 // specified target size (in atoms).
 func (c *Client) RequestChannel(ctx context.Context, channelSize uint64) error {
+	// Fee limit to pay for invoices, in atoms.
+	const feeLimitAtoms = int64(20)
+
 	// Request the policy info from the remote node.
 	var policy lprpc_v1.PolicyResponse
 	if err := c.lprpcV1Call(ctx, "/api/v1/policy", nil, &policy); err != nil {
@@ -182,6 +185,57 @@ func (c *Client) RequestChannel(ctx context.Context, channelSize uint64) error {
 
 	if len(policy.NodeAddresses) == 0 {
 		return fmt.Errorf("remote node returned policy without public node addresses")
+	}
+
+	// Sanity check channel size against server's policy.
+	if channelSize < policy.MinChanSize {
+		return fmt.Errorf("channel size %s is smaller than required "+
+			"min channel size %s", dcrutil.Amount(channelSize),
+			dcrutil.Amount(policy.MinChanSize))
+	}
+	if channelSize > policy.MaxChanSize {
+		return fmt.Errorf("channel size %s is larger than allowed "+
+			"max channel size %s", dcrutil.Amount(channelSize),
+			dcrutil.Amount(policy.MaxChanSize))
+	}
+
+	// Check there aren't too many channels open against the server.
+	chansReq := &lnrpc.ListChannelsRequest{Peer: policy.Node[:]}
+	chansRes, err := c.lc.ListChannels(ctx, chansReq)
+	if err != nil {
+		return fmt.Errorf("unable to list channels for LP node: %v", err)
+	}
+	if uint(len(chansRes.Channels)) >= policy.MaxNbChannels {
+		return fmt.Errorf("number of channels opened to LP node (%d) "+
+			"already reached max allowed by its policy (%d)",
+			len(chansRes.Channels), policy.MaxNbChannels)
+	}
+
+	// Estimated invoice amount based on the policy.
+	wantAtoms := EstimatedInvoiceAmount(channelSize, policy.ChanInvoiceFeeRate)
+
+	// Verify the wallet has enough outbound channel capacity.
+	balance, err := c.lc.ChannelBalance(ctx, &lnrpc.ChannelBalanceRequest{})
+	if err != nil {
+		return fmt.Errorf("unable to query wallet's channel balance: %v", err)
+	}
+	if balance.MaxOutboundAmount < int64(wantAtoms) {
+		return fmt.Errorf("wallet has outbound channel capacity (%s) "+
+			"lower than needed to pay for channel (%s)",
+			dcrutil.Amount(balance.MaxOutboundAmount),
+			dcrutil.Amount(wantAtoms))
+	}
+
+	// Verify the wallet will find a path to pay for the invoice.
+	queryReq := &lnrpc.QueryRoutesRequest{
+		Amt:      int64(wantAtoms),
+		FeeLimit: &lnrpc.FeeLimit{Limit: &lnrpc.FeeLimit_Fixed{Fixed: feeLimitAtoms}},
+		PubKey:   policy.Node.String(),
+	}
+	_, err = c.lc.QueryRoutes(ctx, queryReq)
+	if err != nil {
+		return fmt.Errorf("unable to find route to pay the liquidity provider %s: %v",
+			dcrutil.Amount(wantAtoms), err)
 	}
 
 	if c.cfg.PolicyFetched != nil {
@@ -198,7 +252,7 @@ func (c *Client) RequestChannel(ctx context.Context, channelSize uint64) error {
 		Pubkey: policy.Node.String(),
 		Host:   policy.NodeAddresses[0],
 	}
-	_, err := c.lc.ConnectPeer(ctx, &lnrpc.ConnectPeerRequest{Addr: lnAddr})
+	_, err = c.lc.ConnectPeer(ctx, &lnrpc.ConnectPeerRequest{Addr: lnAddr})
 	if err != nil {
 		if !strings.Contains(err.Error(), "already connected to peer:") {
 			return fmt.Errorf("unable to connect to LP peer over LN: %v", err)
@@ -231,7 +285,6 @@ func (c *Client) RequestChannel(ctx context.Context, channelSize uint64) error {
 	if err != nil {
 		return fmt.Errorf("unable to decode invoice: %v", err)
 	}
-	wantAtoms := EstimatedInvoiceAmount(channelSize, policy.ChanInvoiceFeeRate)
 	if wantAtoms != uint64(decodedInv.NumAtoms) {
 		return fmt.Errorf("LP sent invoice amount %s which is different than "+
 			"expected %s", dcrutil.Amount(decodedInv.NumAtoms),
@@ -250,6 +303,7 @@ func (c *Client) RequestChannel(ctx context.Context, channelSize uint64) error {
 	}
 	payReq := &lnrpc.SendRequest{
 		PaymentRequest: invoiceRes.Invoice,
+		FeeLimit:       &lnrpc.FeeLimit{Limit: &lnrpc.FeeLimit_Fixed{Fixed: feeLimitAtoms}},
 	}
 	payStream, err := c.lc.SendPayment(ctx)
 	if err != nil {
