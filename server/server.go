@@ -31,10 +31,6 @@ var (
 	errPeerUnconnected     = fmt.Errorf("%w: peer not connected to LP node", errPolicy)
 	errNotEnoughUtxos      = fmt.Errorf("%w: not enough utxos to create channel", errPolicy)
 	errTooManyPendingChans = fmt.Errorf("%w: node already has too many pending channels", errPolicy)
-
-	// invoiceExpiration tracks how long the invoices generated to pay for
-	// channels are valid for.
-	invoiceExpiration = time.Hour
 )
 
 // Config holds the server config.
@@ -61,6 +57,7 @@ type Config struct {
 	CloseCheckInterval time.Duration
 	MinChanLifetime    time.Duration
 	CreateKey          []byte
+	InvoiceExpiration  time.Duration
 
 	// ChanInvoiceFeeRate is the fee rate to charge for creating a channel.
 	// in atoms/channel-size-atoms.
@@ -180,12 +177,15 @@ func (s *Server) canCreateChannel(ctx context.Context, wv waitingInvoice) error 
 func (s *Server) hasPendingCreateChanReqs(node rpc.NodeID) bool {
 	s.pendingChansMtx.Lock()
 	t, ok := s.pendingChans[node]
-	if ok && !t.Before(time.Now().Add(-invoiceExpiration)) {
+	if ok && !t.Before(time.Now().Add(-s.cfg.InvoiceExpiration)) {
 		s.pendingChansMtx.Unlock()
 		return true
 	}
-	s.pendingChans[node] = time.Now()
+	now := time.Now()
+	s.pendingChans[node] = now
 	s.pendingChansMtx.Unlock()
+	s.log.Debugf("Tracking %s as having a pending channel until %s", node,
+		now.Add(s.cfg.InvoiceExpiration).Format(time.RFC3339))
 	return false
 }
 
@@ -222,7 +222,7 @@ func (s *Server) CreateInvoice(ctx context.Context, node rpc.NodeID, chanSize ui
 	req := &lnrpc.Invoice{
 		Memo:   fmt.Sprintf("LP of %d for %s", chanSize, node),
 		Value:  int64(amount),
-		Expiry: int64(invoiceExpiration.Seconds()),
+		Expiry: int64(s.cfg.InvoiceExpiration.Seconds()),
 	}
 	res, err := s.lc.AddInvoice(ctx, req)
 	if err != nil {
@@ -608,11 +608,11 @@ func (s *Server) Run(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case <-time.After(invoiceExpiration):
+			case <-time.After(time.Minute):
 			}
 
 			s.pendingChansMtx.Lock()
-			limit := time.Now().Add(-invoiceExpiration)
+			limit := time.Now().Add(-s.cfg.InvoiceExpiration)
 			count := 0
 			for k, v := range s.pendingChans {
 				if v.Before(limit) {

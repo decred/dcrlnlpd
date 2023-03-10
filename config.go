@@ -76,6 +76,7 @@ const (
 	defaultOpenMaxNbChannels   = 2
 	defaultOpenInvoiceFeeRate  = 0.05
 	defaultOpenMaxPendingChans = 1
+	defaultInvoiceExpiration   = time.Hour
 
 	defaultCloseCheckInterval    = time.Hour
 	defaultCloseMinChanLifetime  = time.Hour * 24 * 7
@@ -96,12 +97,13 @@ var (
 )
 
 type openChanPolicyCfg struct {
-	MinChanSize        float64 `long:"minchansize" description:"Minimum channel size in dcr"`
-	MaxChanSize        float64 `long:"maxchansize" description:"Maximum channel size in dcr"`
-	MaxNbChannels      uint    `long:"maxnbchans" description:"Maximum number of channels to open"`
-	MaxPendingChannels uint    `long:"maxpendingchans" description:"Maximum number of pending channels the dcrlnd node is configured to accept"`
-	InvoiceFeeRate     float64 `long:"invoicefeerate" description:"Fee rate to charge for opening the channel as a percentage of the channel size"`
-	Key                string  `long:"key" description:"Only allow creating channels when the request comes with the specified key"`
+	MinChanSize        float64       `long:"minchansize" description:"Minimum channel size in dcr"`
+	MaxChanSize        float64       `long:"maxchansize" description:"Maximum channel size in dcr"`
+	MaxNbChannels      uint          `long:"maxnbchans" description:"Maximum number of channels to open"`
+	MaxPendingChannels uint          `long:"maxpendingchans" description:"Maximum number of pending channels the dcrlnd node is configured to accept"`
+	InvoiceFeeRate     float64       `long:"invoicefeerate" description:"Fee rate to charge for opening the channel as a percentage of the channel size"`
+	Key                string        `long:"key" description:"Only allow creating channels when the request comes with the specified key"`
+	InvoiceExpiration  time.Duration `long:"invoiceexpiration" description:"Invoice expiration duration"`
 }
 
 type closeChanPolicyCfg struct {
@@ -229,6 +231,7 @@ func (c *config) serverConfig() (*server.Config, error) {
 		MaxPendingChans:    c.OpenPolicy.MaxPendingChannels,
 		MinWalletBalance:   minWalletBal,
 		ChanInvoiceFeeRate: c.OpenPolicy.InvoiceFeeRate,
+		InvoiceExpiration:  c.OpenPolicy.InvoiceExpiration,
 		CreateKey:          createKey,
 		CloseCheckInterval: c.ClosePolicy.CheckInterval,
 		MinChanLifetime:    c.ClosePolicy.MinChanLifetime,
@@ -402,6 +405,7 @@ func loadConfig() (*config, []string, error) {
 			MaxNbChannels:      defaultOpenMaxNbChannels,
 			MaxPendingChannels: defaultOpenMaxPendingChans,
 			InvoiceFeeRate:     defaultOpenInvoiceFeeRate,
+			InvoiceExpiration:  defaultInvoiceExpiration,
 		},
 		ClosePolicy: closeChanPolicyCfg{
 			CheckInterval:    defaultCloseCheckInterval,
@@ -577,6 +581,9 @@ func loadConfig() (*config, []string, error) {
 	}
 	if cfg.OpenPolicy.InvoiceFeeRate <= 0 {
 		return nil, nil, fmt.Errorf("openpolicy.invoicefeerate cannot be zero")
+	}
+	if cfg.OpenPolicy.InvoiceExpiration < time.Second {
+		return nil, nil, fmt.Errorf("openpolicy.invoiceexpiration cannot be smaller than 1 second")
 	}
 	if cfg.ClosePolicy.CheckInterval < time.Second {
 		return nil, nil, fmt.Errorf("closepolicy.checkinterval cannot be smaller than 1 second")
