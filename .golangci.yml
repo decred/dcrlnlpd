@@ -4,11 +4,12 @@ run:
 linters:
   disable-all: true
   enable:
+    - contextcheck
     - gofmt
     - gosimple
+    - govet
     - ineffassign
     - misspell
-    - govet
     - noctx
     - sqlclosecheck
     - unconvert
