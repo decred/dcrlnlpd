@@ -584,6 +584,14 @@ func (lc *lightningClientMock) ListPermissions(ctx context.Context, in *lnrpc.Li
 	panic("not implemented") // TODO: Implement
 }
 
+// lncli: `enforcenodeping`
+// EnforceNodePing attempts to ping the specified peer. If the request is
+// canceled before a response is received from the remote peer, then this
+// forces lnd to disconnect from the peer (and potentially attempt to reconnect).
+func (lc *lightningClientMock) EnforceNodePing(ctx context.Context, in *lnrpc.EnforceNodePingRequest, opts ...grpc.CallOption) (*lnrpc.EnforceNodePingResponse, error) {
+	panic("not implemented") // TODO: Implement
+}
+
 type clientStream struct{}
 
 // Header returns the header metadata received from the server if there
