@@ -8,7 +8,7 @@ require (
 	github.com/decred/dcrd/chaincfg/v3 v3.2.0
 	github.com/decred/dcrd/dcrutil/v4 v4.0.1
 	github.com/decred/dcrd/wire v1.6.0
-	github.com/decred/dcrlnd v0.5.0
+	github.com/decred/dcrlnd v0.5.1-0.20240123175816-ae2058fde3dd
 	github.com/decred/slog v1.2.0
 	github.com/gorilla/mux v1.8.1
 	github.com/jessevdk/go-flags v1.5.0
@@ -20,7 +20,7 @@ require (
 
 require (
 	decred.org/cspp/v2 v2.1.0 // indirect
-	decred.org/dcrwallet/v3 v3.0.0 // indirect
+	decred.org/dcrwallet/v3 v3.1.1-0.20240123171509-cb3222c211b9 // indirect
 	github.com/agl/ed25519 v0.0.0-20170116200512-5312a6153412 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/btcsuite/btcwallet/walletdb v1.4.0 // indirect
@@ -54,7 +54,7 @@ require (
 	github.com/decred/dcrd/lru v1.1.2 // indirect
 	github.com/decred/dcrd/math/uint256 v1.0.1 // indirect
 	github.com/decred/dcrd/peer/v3 v3.0.2 // indirect
-	github.com/decred/dcrd/rpc/jsonrpc/types/v4 v4.0.0 // indirect
+	github.com/decred/dcrd/rpc/jsonrpc/types/v4 v4.1.0 // indirect
 	github.com/decred/dcrd/rpcclient/v8 v8.0.0 // indirect
 	github.com/decred/dcrd/txscript/v4 v4.1.0 // indirect
 	github.com/decred/dcrtest/dcrdtest v1.0.0 // indirect
@@ -77,7 +77,7 @@ require (
 	github.com/jrick/bitset v1.0.0 // indirect
 	github.com/jrick/wsrpc/v2 v2.3.5 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
 	github.com/matheusd/etcd v0.5.0-alpha.5.0.20230703143131-79b93c0cee87 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/miekg/dns v1.1.53 // indirect
