@@ -592,6 +592,13 @@ func (lc *lightningClientMock) EnforceNodePing(ctx context.Context, in *lnrpc.En
 	panic("not implemented") // TODO: Implement
 }
 
+// lncli: `calcpaymentstats`
+// CalcPaymentStats goes through the DB and generates a report on total
+// number of payments recorded.
+func (lc *lightningClientMock) CalcPaymentStats(ctx context.Context, in *lnrpc.CalcPaymentStatsRequest, opts ...grpc.CallOption) (*lnrpc.CalcPaymentStatsResponse, error) {
+	panic("not implemented") // TODO: Implement
+}
+
 type clientStream struct{}
 
 // Header returns the header metadata received from the server if there
