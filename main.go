@@ -23,6 +23,12 @@ func indexHandler(w http.ResponseWriter, req *http.Request) {
 
 func newInfoHandler(server *server.Server) func(w http.ResponseWriter, req *http.Request) {
 	return func(w http.ResponseWriter, req *http.Request) {
+		if !isReqFromLocalhost(req) {
+			w.WriteHeader(http.StatusForbidden)
+			log.Warnf("Forbidden request for info from %s", requestAddr(req))
+			return
+		}
+
 		info, err := server.FetchManagedChannels(req.Context())
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
