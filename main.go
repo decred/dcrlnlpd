@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -20,9 +21,27 @@ func indexHandler(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(w, "%s\n%s\n", appName, version.String())
 }
 
+func newInfoHandler(server *server.Server) func(w http.ResponseWriter, req *http.Request) {
+	return func(w http.ResponseWriter, req *http.Request) {
+		info, err := server.FetchManagedChannels(req.Context())
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "error fetching managed channels: %v\n", err)
+			log.Errorf("Unable to fetch managed channels: %v", err)
+			return
+		}
+
+		err = json.NewEncoder(w).Encode(info)
+		if err != nil {
+			log.Errorf("Unable to encode info: %v", err)
+		}
+	}
+}
+
 func handler(s *server.Server) http.Handler {
 	router := mux.NewRouter().StrictSlash(true)
 	router.Methods("GET").Path("/").Name("index").HandlerFunc(indexHandler)
+	router.Methods("GET").Path("/info").Name("info").HandlerFunc(newInfoHandler(s))
 	server.NewV1Handler(s, router)
 	logRouterConfig(router)
 	return router
