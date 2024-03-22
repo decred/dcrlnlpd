@@ -2,7 +2,7 @@ package server
 
 import "time"
 
-// chanActivityScore holds "how much activity" a channel received through some
+// ChanActivityScore holds "how much activity" a channel received through some
 // period of time.
 //
 // The basic equation for determining the "activity" score for a channel is
@@ -12,17 +12,17 @@ import "time"
 // The interpretation for this equation is that the activity score is the
 // percentage of the channel capacity sent through the channel during its
 // entire lifetime.
-type chanActivityScore float64
+type ChanActivityScore float64
 
 // toPercent returns the activity score as a percentage.
-func (s chanActivityScore) toPercent() float64 {
+func (s ChanActivityScore) ToPercent() float64 {
 	return float64(s) * 100
 }
 
 // channelActivity returns the "activity" score for a channel, which measures
 // the total amount of atoms sent through the channel during its lifetime.
 func channelActivity(totalSentAtoms, channelSizeAtoms int64,
-	lifetime time.Duration) chanActivityScore {
+	lifetime time.Duration) ChanActivityScore {
 
 	if lifetime <= 0 {
 		panic("lifetime cannot be <= 0")
@@ -37,5 +37,5 @@ func channelActivity(totalSentAtoms, channelSizeAtoms int64,
 		hours = 1
 	}
 
-	return chanActivityScore(float64(totalSentAtoms) / float64(channelSizeAtoms) / hours)
+	return ChanActivityScore(float64(totalSentAtoms) / float64(channelSizeAtoms) / hours)
 }

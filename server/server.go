@@ -448,134 +448,245 @@ func (s *Server) closeChannel(ctx context.Context, nodeID rpc.NodeID, channelPoi
 	}
 }
 
-// manageChannels manages opened channels where the local node is the initiator.
-func (s *Server) manageChannels(ctx context.Context) error {
+// ManagedChannel is information about channels managed by the LP.
+type ManagedChannel struct {
+	// Lifetime of the channel since it has opened.
+	Lifetime       time.Duration
+	ChanPoint      string
+	Sid            lnwire.ShortChannelID
+	RemotePubkey   string
+	Capacity       dcrutil.Amount
+	LocalBalance   dcrutil.Amount
+	RemoteBalance  dcrutil.Amount
+	TotalAtomsSent dcrutil.Amount
+
+	// HasMinLifetime is true when this channel has the minimum lifetime
+	// required to be eligible for closing.
+	HasMinLifetime bool
+
+	// Score of the channel (activity % within its lifetime).
+	Score ChanActivityScore
+
+	// WillClose whether this channel is likely to be closed in the next
+	// round of management.
+	WillClose bool
+}
+
+// UnmanagedChannel is information about channels NOT managed by the LP.
+type UnmanagedChannel struct {
+	ChanPoint     string
+	Sid           lnwire.ShortChannelID
+	Capacity      dcrutil.Amount
+	LocalBalance  dcrutil.Amount
+	RemoteBalance dcrutil.Amount
+}
+
+// ManagementInfo is the full set of information taken into account when
+// managing channels.
+type ManagementInfo struct {
+	// WalletBalance is the amount available (confirmed + unconfirmed) in
+	// the on-chain wallet.
+	WalletBalance dcrutil.Amount
+
+	// LimboBalance is the amount that is pending to be reclaimed in
+	// already closed channels.
+	LimboBalance dcrutil.Amount
+
+	// TotalBalance available to open channels (both confirmed and pending
+	// to be reclaimed).
+	TotalBalance dcrutil.Amount
+
+	// MinWalletBalance minimum amount of funds that must be available to
+	// open new channels. When the total balance is lower than this amount,
+	// channels will start to be closed.
+	MinWalletBalance dcrutil.Amount
+
+	// BlockHeight is the current block height of the wallet.
+	BlockHeight uint32
+
+	// Channels is the list of channels managed by the LP server.
+	Channels []ManagedChannel
+
+	// UnmanagedChannels are channels that are NOT eligible for closing by
+	// the LP server.
+	UnmanagedChannels []UnmanagedChannel
+
+	// NeedsManagement is true when the channels need to be managed to
+	// reclaim some funds.
+	NeedsManagement bool
+
+	// Reclaimed is the (approximate) amount that will be reclaimed after
+	// closing some channels. This does not take into account various
+	// transaction fees that will need to be paid.
+	Reclaimed dcrutil.Amount
+}
+
+// FetchManagedChannels returns the list of channels managed by the server.
+func (s *Server) FetchManagedChannels(ctx context.Context) (res ManagementInfo, err error) {
 	// Fetch the current wallet balance and see if we actually need to
 	// manage the channels.
 	bal, err := s.lc.WalletBalance(ctx, &lnrpc.WalletBalanceRequest{})
 	if err != nil {
-		return err
+		return res, err
 	}
-	totalBalance := dcrutil.Amount(bal.TotalBalance)
+	res.WalletBalance = dcrutil.Amount(bal.TotalBalance)
 
 	// Also add in the amount that is already pending from previously
 	// closed channels.
-	var limboBalance dcrutil.Amount
 	pendingChans, err := s.lc.PendingChannels(ctx, &lnrpc.PendingChannelsRequest{})
 	if err != nil {
-		return err
+		return res, err
 	}
 	for _, c := range pendingChans.PendingForceClosingChannels {
-		limboBalance += dcrutil.Amount(c.LimboBalance)
+		res.LimboBalance += dcrutil.Amount(c.LimboBalance)
 	}
-	totalBalance += limboBalance
+	res.TotalBalance = res.LimboBalance + res.WalletBalance
+	res.MinWalletBalance = s.cfg.MinWalletBalance
+	res.NeedsManagement = res.TotalBalance < res.MinWalletBalance
 
-	if totalBalance >= s.cfg.MinWalletBalance {
-		s.log.Debugf("Wallet has more coins available (total "+
-			"%.8f, limbo %.8f) than minimum (%.8f) needed "+
-			"to manage channels",
-			dcrutil.Amount(bal.TotalBalance).ToCoin(),
-			limboBalance.ToCoin(),
-			s.cfg.MinWalletBalance.ToCoin())
-		return nil
-	}
-
-	// Time to check the channels. Fetch list of channels.
+	// Fetch list of channels.
 	chanList, err := s.lc.ListChannels(ctx, &lnrpc.ListChannelsRequest{})
 	if err != nil {
-		return err
+		return res, err
 	}
-
-	s.log.Debugf("Managing %d channels looking for %s",
-		len(chanList.Channels), s.cfg.MinWalletBalance-totalBalance)
 
 	// Fetch the current block time to figure out channel lifetime.
 	info, err := s.lc.GetInfo(ctx, &lnrpc.GetInfoRequest{})
 	if err != nil {
-		return err
+		return res, err
 	}
-	bh := info.BlockHeight
-
-	var nonInit, beforeMinDur, closing int
+	res.BlockHeight = info.BlockHeight
 
 	// Determine the "activity" score for each channel. Key is chanID.
-	chans := make([]*lnrpc.Channel, 0, len(chanList.Channels))
-	activity := make(map[uint64]chanActivityScore, len(chanList.Channels))
+	res.Channels = make([]ManagedChannel, 0, len(chanList.Channels))
+	res.UnmanagedChannels = make([]UnmanagedChannel, 0, len(chanList.Channels))
 	for _, c := range chanList.Channels {
 		cid := lnwire.NewShortChanIDFromInt(c.ChanId)
+		cp := c.ChannelPoint
 
 		// Ignore channels where we are not the initiator.
 		if !c.Initiator {
-			s.log.Tracef("Ignoring inbound channel %s", c.ChannelPoint)
-			nonInit += 1
+			res.UnmanagedChannels = append(res.UnmanagedChannels,
+				UnmanagedChannel{
+					ChanPoint:     cp,
+					Sid:           cid,
+					Capacity:      dcrutil.Amount(c.Capacity),
+					LocalBalance:  dcrutil.Amount(c.LocalBalance),
+					RemoteBalance: dcrutil.Amount(c.RemoteBalance),
+				})
 			continue
 		}
 
 		// Ignore channels that haven't been online for long enough.
-		lifetime := time.Duration(bh-cid.BlockHeight) * s.chainParams.TargetTimePerBlock
-		if lifetime < s.cfg.MinChanLifetime {
-			s.log.Tracef("Ignoring channel %s due to lifetime "+
-				"%s < min duration %s", c.ChannelPoint,
-				lifetime, s.cfg.MinChanLifetime)
-			beforeMinDur += 1
-			continue
-		}
-
-		// Sanity check.
-		if c.Capacity == 0 {
-			s.log.Warnf("Channel without capacity: %s", c.ChannelPoint)
-			continue
-		}
+		lifetime := time.Duration(res.BlockHeight-cid.BlockHeight) * s.chainParams.TargetTimePerBlock
+		HasMinLifetime := lifetime >= s.cfg.MinChanLifetime
 
 		// Calc activity.
 		score := channelActivity(c.TotalAtomsSent, c.Capacity, lifetime)
-		activity[c.ChanId] = score
-		chans = append(chans, c)
-
-		s.log.Tracef("Activity score for chan %s (sent: %d, "+
-			"cap: %d, lt: %s): %f", c.ChannelPoint,
-			c.TotalAtomsSent, c.Capacity,
-			lifetime, score.toPercent())
+		res.Channels = append(res.Channels, ManagedChannel{
+			ChanPoint:      cp,
+			Sid:            cid,
+			RemotePubkey:   c.RemotePubkey,
+			Lifetime:       lifetime,
+			HasMinLifetime: HasMinLifetime,
+			Capacity:       dcrutil.Amount(c.Capacity),
+			LocalBalance:   dcrutil.Amount(c.LocalBalance),
+			RemoteBalance:  dcrutil.Amount(c.RemoteBalance),
+			TotalAtomsSent: dcrutil.Amount(c.TotalAtomsSent),
+			Score:          score,
+		})
 	}
 
 	// Sort by activity score.
-	sort.Slice(chans, func(i, j int) bool {
-		scoreI := activity[chans[i].ChanId]
-		scoreJ := activity[chans[j].ChanId]
+	sort.Slice(res.Channels, func(i, j int) bool {
+		scoreI := res.Channels[i].Score
+		scoreJ := res.Channels[j].Score
 		return scoreI < scoreJ
 	})
 
+	// If there's no need to manage the channels, we're done.
+	if !res.NeedsManagement {
+		return res, nil
+	}
+
 	// Close low activity channels until we reach the minimum amount of
 	// atoms in the wallet.
-	var reclaimed dcrutil.Amount
-
-	for _, c := range chans {
+	for i := range res.Channels {
 		// Time to close channel!
-		cid := lnwire.NewShortChanIDFromInt(c.ChanId)
-		lifetime := time.Duration(bh-cid.BlockHeight) * s.chainParams.TargetTimePerBlock
-		s.log.Infof("Closing channel %s with %s due to "+
-			"low activity (sent %.8f, lifetime %s, capacity %.8f)",
-			c.ChannelPoint, c.RemotePubkey,
-			dcrutil.Amount(c.TotalAtomsSent).ToCoin(),
-			lifetime, dcrutil.Amount(c.Capacity).ToCoin())
-		closing += 1
-		var nodeID rpc.NodeID
-		nodeID.FromString(c.RemotePubkey)
-		go s.closeChannel(ctx, nodeID, c.ChannelPoint)
+		c := &res.Channels[i]
+
+		// Ignore channels that are not old enough yet to be closed.
+		if !c.HasMinLifetime {
+			continue
+		}
+
+		// Close this channel.
+		c.WillClose = true
 
 		// c.LocalBalance is not _exactly_ correct because there will
 		// be fees to close the channel and reclaim the funds back, but
 		// those are negligible compared to the channel sizes.
-		reclaimed += dcrutil.Amount(c.LocalBalance)
-		if totalBalance+reclaimed >= s.cfg.MinWalletBalance {
+		res.Reclaimed += c.LocalBalance
+		if res.TotalBalance+res.Reclaimed >= s.cfg.MinWalletBalance {
 			break
 		}
 	}
 
-	remained := len(chans) - closing
+	return res, nil
+}
+
+// manageChannels manages opened channels where the local node is the initiator.
+func (s *Server) manageChannels(ctx context.Context) error {
+	// Fetch channel management info.
+	info, err := s.FetchManagedChannels(ctx)
+	if err != nil {
+		return err
+	}
+
+	if !info.NeedsManagement {
+		s.log.Debugf("Wallet has more coins available (total "+
+			"%.8f, limbo %.8f) than minimum (%.8f) needed "+
+			"to manage channels",
+			info.WalletBalance.ToCoin(),
+			info.LimboBalance.ToCoin(),
+			info.MinWalletBalance.ToCoin())
+		return nil
+	}
+
+	s.log.Debugf("Managing %d channels (%d unmanaged) looking for %s",
+		len(info.Channels), len(info.UnmanagedChannels),
+		info.MinWalletBalance-info.TotalBalance)
+
+	for _, c := range info.UnmanagedChannels {
+		s.log.Tracef("Ignoring inbound channel %s", c.ChanPoint)
+	}
+
+	var closing, beforeMinDur int
+	for _, c := range info.Channels {
+		if !c.HasMinLifetime {
+			beforeMinDur++
+		}
+
+		// Time to close channel!
+		if !c.WillClose {
+			continue
+		}
+
+		s.log.Infof("Closing channel %s with %s due to "+
+			"low activity (sent %.8f, lifetime %s, capacity %.8f)",
+			c.ChanPoint, c.RemotePubkey,
+			c.TotalAtomsSent.ToCoin(),
+			c.Lifetime, c.Capacity.ToCoin())
+		closing++
+		var nodeID rpc.NodeID
+		nodeID.FromString(c.RemotePubkey)
+		go s.closeChannel(ctx, nodeID, c.ChanPoint)
+	}
+
+	remained := len(info.Channels) - closing
 	s.log.Infof("Managed channels. Non-initiator: %d, before min duration: %d "+
-		"closing: %d, remained: %d, reclaimed: %s", nonInit, beforeMinDur,
-		closing, remained, reclaimed)
+		"closing: %d, remained: %d, reclaimed: %s", len(info.UnmanagedChannels),
+		beforeMinDur, closing, remained, info.Reclaimed)
 	return nil
 }
 
