@@ -14,7 +14,7 @@ func TestChanActivityScore(t *testing.T) {
 		sent int64
 		size int64
 		life time.Duration
-		want chanActivityScore
+		want ChanActivityScore
 	}{{
 		name: "1 atom sent through 1 DCR chan within 1 hour",
 		sent: 1,
