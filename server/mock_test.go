@@ -549,8 +549,8 @@ func (lc *lightningClientMock) RestoreChannelBackups(ctx context.Context, in *ln
 // date information concerning the state of all channel backups. Each time a
 // new channel is added, we return the new set of channels, along with a
 // multi-chan backup containing the backup info for all channels. Each time a
-// channel is closed, we send a new update, which contains new new chan back
-// ups, but the updated set of encrypted multi-chan backups with the closed
+// channel is closed, we send a new update, which contains new chan backups,
+// but the updated set of encrypted multi-chan backups with the closed
 // channel(s) removed.
 func (lc *lightningClientMock) SubscribeChannelBackups(ctx context.Context, in *lnrpc.ChannelBackupSubscription, opts ...grpc.CallOption) (lnrpc.Lightning_SubscribeChannelBackupsClient, error) {
 	panic("not implemented") // TODO: Implement
@@ -596,6 +596,60 @@ func (lc *lightningClientMock) EnforceNodePing(ctx context.Context, in *lnrpc.En
 // CalcPaymentStats goes through the DB and generates a report on total
 // number of payments recorded.
 func (lc *lightningClientMock) CalcPaymentStats(ctx context.Context, in *lnrpc.CalcPaymentStatsRequest, opts ...grpc.CallOption) (*lnrpc.CalcPaymentStatsResponse, error) {
+	panic("not implemented") // TODO: Implement
+}
+
+// lncli: `batchopenchannel`
+// BatchOpenChannel attempts to open multiple single-funded channels in a
+// single transaction in an atomic way. This means either all channel open
+// requests succeed at once or all attempts are aborted if any of them fail.
+// This is the safer variant of using PSBTs to manually fund a batch of channels
+// through the OpenChannel RPC
+func (lc *lightningClientMock) BatchOpenChannel(ctx context.Context, in *lnrpc.BatchOpenChannelRequest, opts ...grpc.CallOption) (*lnrpc.BatchOpenChannelResponse, error) {
+	panic("not implemented") // TODO: Implement
+}
+
+// lncli: `checkmacaroonpermissions`
+// CheckMacaroonPermissions checks whether a request follows the constraints
+// imposed on the macaroon and that the macaroon is authorized to follow the
+// provided permissions.
+func (lc *lightningClientMock) CheckMacaroonPermissions(ctx context.Context, in *lnrpc.CheckMacPermRequest, opts ...grpc.CallOption) (*lnrpc.CheckMacPermResponse, error) {
+	panic("not implemented") // TODO: Implement
+}
+
+// lncli: `deletepayment`
+// DeletePayment deletes an outgoing payment from DB. Note that it will not
+// attempt to delete an In-Flight payment, since that would be unsafe.
+func (lc *lightningClientMock) DeletePayment(ctx context.Context, in *lnrpc.DeletePaymentRequest, opts ...grpc.CallOption) (*lnrpc.DeletePaymentResponse, error) {
+	panic("not implemented") // TODO: Implement
+}
+
+// RegisterRPCMiddleware adds a new gRPC middleware to the interceptor chain.
+// A gRPC middleware is software component external to lnd that aims to add
+// additional business logic to lnd by observing/intercepting/validating
+// incoming gRPC client requests and (if needed) replacing/overwriting outgoing
+// messages before they're sent to the client. When registering the middleware
+// must identify itself and indicate what custom macaroon caveats it wants to
+// be responsible for. Only requests that contain a macaroon with that specific
+// custom caveat are then sent to the middleware for inspection. The other
+// option is to register for the read-only mode in which all requests/responses
+// are forwarded for interception to the middleware but the middleware is not
+// allowed to modify any responses. As a security measure, _no_ middleware can
+// modify responses for requests made with _unencumbered_ macaroons!
+func (lc *lightningClientMock) RegisterRPCMiddleware(ctx context.Context, opts ...grpc.CallOption) (lnrpc.Lightning_RegisterRPCMiddlewareClient, error) {
+	panic("not implemented") // TODO: Implement
+}
+
+// lncli: `sendcustom`
+// SendCustomMessage sends a custom peer message.
+func (lc *lightningClientMock) SendCustomMessage(ctx context.Context, in *lnrpc.SendCustomMessageRequest, opts ...grpc.CallOption) (*lnrpc.SendCustomMessageResponse, error) {
+	panic("not implemented") // TODO: Implement
+}
+
+// lncli: `subscribecustom`
+// SubscribeCustomMessages subscribes to a stream of incoming custom peer
+// messages.
+func (lc *lightningClientMock) SubscribeCustomMessages(ctx context.Context, in *lnrpc.SubscribeCustomMessagesRequest, opts ...grpc.CallOption) (lnrpc.Lightning_SubscribeCustomMessagesClient, error) {
 	panic("not implemented") // TODO: Implement
 }
 

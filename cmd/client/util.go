@@ -29,11 +29,15 @@ func connectToDcrlnd(addr, tlsCertPath, macaroonPath string) (*grpc.ClientConn, 
 	if err = mac.UnmarshalBinary(macBytes); err != nil {
 		return nil, err
 	}
+	macOpt, err := macaroons.NewMacaroonCredential(mac)
+	if err != nil {
+		return nil, err
+	}
 
 	// Now we append the macaroon credentials to the dial options.
 	opts = append(
 		opts,
-		grpc.WithPerRPCCredentials(macaroons.NewMacaroonCredential(mac)),
+		grpc.WithPerRPCCredentials(macOpt),
 		grpc.WithBlock(),
 	)
 

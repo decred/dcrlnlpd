@@ -4,13 +4,28 @@ run:
 linters:
   disable-all: true
   enable:
+    - asciicheck
+    - bidichk
+    - bodyclose
     - contextcheck
+    - dupword
+    - durationcheck
+    - errchkjson
+    - exportloopref
     - gofmt
+    - goimports
     - gosimple
     - govet
+    - grouper
     - ineffassign
     - misspell
+    - nilerr
     - noctx
+    - nosprintfhostport
+    - reassign
+    - rowserrcheck
     - sqlclosecheck
+    - tparallel
+    - typecheck
     - unconvert
     - unused
