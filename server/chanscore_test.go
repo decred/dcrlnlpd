@@ -48,7 +48,6 @@ func TestChanActivityScore(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			gotScore := channelActivity(tc.sent, tc.size, tc.life)
 			if gotScore != tc.want {
