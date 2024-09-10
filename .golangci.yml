@@ -8,10 +8,10 @@ linters:
     - bidichk
     - bodyclose
     - contextcheck
+    - copyloopvar
     - dupword
     - durationcheck
     - errchkjson
-    - exportloopref
     - gofmt
     - goimports
     - gosimple
