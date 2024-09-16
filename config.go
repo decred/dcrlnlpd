@@ -112,6 +112,11 @@ type closeChanPolicyCfg struct {
 	MinWalletBalance float64       `long:"minwalletbalance" description:"The minimum wallet balance below which channels will start to be closed"`
 }
 
+type ignorePolicyCfg struct {
+	Channels []string `long:"channels" description:"List of channels to ignore for management purposes"`
+	Nodes    []string `long:"nodes" description:"List of nodes to ignore for management purposes"`
+}
+
 type config struct {
 	ShowVersion bool `short:"V" long:"version" description:"Display version information and exit"`
 
@@ -148,8 +153,9 @@ type config struct {
 	LNNodeAddrs    []string `long:"lnnodeaddr" description:"Public address of the underlying LN node in the P2P network"`
 
 	// Policy Config.
-	OpenPolicy  openChanPolicyCfg  `group:"Open Channel Policy" namespace:"openpolicy"`
-	ClosePolicy closeChanPolicyCfg `group:"Close Channel Policy" namespace:"closepolicy"`
+	OpenPolicy   openChanPolicyCfg  `group:"Open Channel Policy" namespace:"openpolicy"`
+	ClosePolicy  closeChanPolicyCfg `group:"Close Channel Policy" namespace:"closepolicy"`
+	IgnorePolicy ignorePolicyCfg    `group:"Ignore Policy" namespace:"ignorepolicy"`
 
 	// The rest of the members of this struct are filled by loadConfig().
 
@@ -216,6 +222,15 @@ func (c *config) serverConfig() (*server.Config, error) {
 		createKey = []byte(c.OpenPolicy.Key)
 	}
 
+	ignoreNodes := make(map[string]struct{}, len(c.IgnorePolicy.Nodes))
+	for _, s := range c.IgnorePolicy.Nodes {
+		ignoreNodes[s] = struct{}{}
+	}
+	ignoreChannels := make(map[string]struct{}, len(c.IgnorePolicy.Channels))
+	for _, s := range c.IgnorePolicy.Channels {
+		ignoreChannels[s] = struct{}{}
+	}
+
 	return &server.Config{
 		ChainParams:    c.activeNet.chainParams(),
 		LNRPCHost:      c.LNRPCHost,
@@ -235,6 +250,8 @@ func (c *config) serverConfig() (*server.Config, error) {
 		CreateKey:          createKey,
 		CloseCheckInterval: c.ClosePolicy.CheckInterval,
 		MinChanLifetime:    c.ClosePolicy.MinChanLifetime,
+		IgnoreNodes:        ignoreNodes,
+		IgnoreChannels:     ignoreChannels,
 	}, nil
 }
 
