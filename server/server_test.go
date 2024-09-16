@@ -20,6 +20,9 @@ func TestManageChannels(t *testing.T) {
 	chanPoint0 := "0000000000000000000000000000000000000000000000000000000000000000:0"
 	chanPoint1 := "1111111111111111111111111111111111111111111111111111111111111111:1"
 	chanPoint2 := "2222222222222222222222222222222222222222222222222222222222222222:2"
+	chanPointIgnored := "3333333333333333333333333333333333333333333333333333333333333333:3"
+	ignoredRemoteId := "ignored-remote"
+
 	var nextCidTxIndex uint32
 	cidForLifetime := func(d time.Duration) uint64 {
 		blocks := uint64(d / chainParams.TargetTimePerBlock)
@@ -28,6 +31,7 @@ func TestManageChannels(t *testing.T) {
 		nextCidTxIndex += 1
 		return cid.ToUint64()
 	}
+
 	tests := []struct {
 		name         string
 		wbal         dcrutil.Amount
@@ -143,6 +147,30 @@ func TestManageChannels(t *testing.T) {
 			chanPoint0: {},
 			chanPoint2: {},
 		},
+	}, {
+		name: "ignored channel is not closed",
+		wbal: minWalletBal - 1,
+		chans: []*lnrpc.Channel{{
+			ChannelPoint: chanPointIgnored,
+			RemotePubkey: "remote",
+			ChanId:       cidForLifetime(minLifetime + 1),
+			Capacity:     int64(dcr),
+			LocalBalance: int64(dcr),
+			Initiator:    true,
+		}},
+		wantClosed: map[string]struct{}{},
+	}, {
+		name: "channel from ignored node is not closed",
+		wbal: minWalletBal - 1,
+		chans: []*lnrpc.Channel{{
+			ChannelPoint: chanPoint0,
+			RemotePubkey: ignoredRemoteId,
+			ChanId:       cidForLifetime(minLifetime + 1),
+			Capacity:     int64(dcr),
+			LocalBalance: int64(dcr),
+			Initiator:    true,
+		}},
+		wantClosed: map[string]struct{}{},
 	}}
 
 	for _, tc := range tests {
@@ -182,6 +210,8 @@ func TestManageChannels(t *testing.T) {
 					ChainParams:      chainParams,
 					MinWalletBalance: minWalletBal,
 					MinChanLifetime:  minLifetime,
+					IgnoreChannels:   map[string]struct{}{chanPointIgnored: {}},
+					IgnoreNodes:      map[string]struct{}{ignoredRemoteId: {}},
 				},
 			}
 

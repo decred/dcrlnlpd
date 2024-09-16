@@ -31,6 +31,7 @@ var (
 	errPeerUnconnected     = fmt.Errorf("%w: peer not connected to LP node", errPolicy)
 	errNotEnoughUtxos      = fmt.Errorf("%w: not enough utxos to create channel", errPolicy)
 	errTooManyPendingChans = fmt.Errorf("%w: node already has too many pending channels", errPolicy)
+	errIgnoredNode         = fmt.Errorf("%w: node is in list of ignored nodes", errPolicy)
 )
 
 // Config holds the server config.
@@ -58,6 +59,8 @@ type Config struct {
 	MinChanLifetime    time.Duration
 	CreateKey          []byte
 	InvoiceExpiration  time.Duration
+	IgnoreChannels     map[string]struct{}
+	IgnoreNodes        map[string]struct{}
 
 	// ChanInvoiceFeeRate is the fee rate to charge for creating a channel.
 	// in atoms/channel-size-atoms.
@@ -154,6 +157,12 @@ func (s *Server) canCreateChannel(ctx context.Context, wv waitingInvoice) error 
 	}
 	if wv.ChannelSize > s.cfg.MaxChanSize {
 		return errTooLargeChan
+	}
+
+	// Check this node is not on the ignored list. Ignored nodes are
+	// manually managed.
+	if _, ok := s.cfg.IgnoreNodes[wv.TargetNode.String()]; ok {
+		return errIgnoredNode
 	}
 
 	// Verify if there are already opened channels to the target node. Note
@@ -541,6 +550,31 @@ type ManagementInfo struct {
 	Reclaimed dcrutil.Amount
 }
 
+// isChannelIgnored returns true if the channel should be ignored for
+// management purposes (c is not outbound or one of the channels configured to
+// be ignored).
+func (s *Server) isChannelIgnored(c *lnrpc.Channel) bool {
+	if !c.Initiator {
+		s.log.Debugf("Ignoring management of %s due to not outbound",
+			c.ChannelPoint)
+		return true
+	}
+
+	if _, ok := s.cfg.IgnoreChannels[c.ChannelPoint]; ok {
+		s.log.Debugf("Ignoring management of %s due to ignored channel cfg",
+			c.ChannelPoint)
+		return true
+	}
+
+	if _, ok := s.cfg.IgnoreNodes[c.RemotePubkey]; ok {
+		s.log.Debugf("Ignoring management of %s due to ignored node cfg",
+			c.ChannelPoint)
+		return true
+	}
+
+	return false
+}
+
 // FetchManagedChannels returns the list of channels managed by the server.
 func (s *Server) FetchManagedChannels(ctx context.Context) (res ManagementInfo, err error) {
 	// Fetch the current wallet balance and see if we actually need to
@@ -584,8 +618,8 @@ func (s *Server) FetchManagedChannels(ctx context.Context) (res ManagementInfo, 
 		cid := lnwire.NewShortChanIDFromInt(c.ChanId)
 		cp := c.ChannelPoint
 
-		// Ignore channels where we are not the initiator.
-		if !c.Initiator {
+		// Skip if this channel is ignored for management.
+		if s.isChannelIgnored(c) {
 			res.UnmanagedChannels = append(res.UnmanagedChannels,
 				UnmanagedChannel{
 					ChanPoint:     cp,
