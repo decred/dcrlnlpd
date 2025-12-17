@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	_ "embed"
 	"errors"
@@ -164,10 +165,11 @@ type config struct {
 
 // listeners returns the interface listeners where connections to the http
 // server should be accepted.
-func (c *config) listeners() ([]net.Listener, error) {
+func (c *config) listeners(ctx context.Context) ([]net.Listener, error) {
 
 	listenFunc := func(addr string) (net.Listener, error) {
-		return net.Listen("tcp", addr)
+		var lc net.ListenConfig
+		return lc.Listen(ctx, "tcp", addr)
 	}
 
 	if !c.DisableTLS {
@@ -676,14 +678,6 @@ func loadConfig() (*config, []string, error) {
 	// Expand file paths.
 	cfg.LNTLSCertPath = cleanAndExpandPath(cfg.LNTLSCertPath)
 	cfg.LNMacaroonPath = cleanAndExpandPath(cfg.LNMacaroonPath)
-
-	// Attempt an early connection to the dcrlnd server and verify if it's a
-	// reasonable server for operations.
-	err = server.CheckDcrlnd(cfg.LNRPCHost, cfg.LNTLSCertPath, cfg.LNMacaroonPath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error while checking underlying "+
-			"dcrlnd node: %v", err)
-	}
 
 	// Warn about missing config file only after all other configuration is
 	// done.  This prevents the warning on help messages and invalid

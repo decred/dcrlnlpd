@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"time"
 
 	"github.com/decred/dcrlnd/lnrpc"
 	"github.com/decred/dcrlnd/macaroons"
@@ -42,23 +41,14 @@ func connectToDcrlnd(addr, tlsCertPath, macaroonPath string) (*grpc.ClientConn, 
 	opts = append(
 		opts,
 		grpc.WithPerRPCCredentials(macOpt),
-		grpc.WithBlock(),
 	)
 
 	// Block until connection happens or fail.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	conn, err := grpc.DialContext(ctx, addr, opts...)
+	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("unable to dial to dcrlnd's gRPC server at %v: %v", addr, err)
+		return nil, fmt.Errorf("unable create gRPC client for %v: %v", addr, err)
 	}
 	return conn, nil
-}
-
-// CheckDcrlnd connects and performs sanity checks on the given dcrlnd instance.
-func CheckDcrlnd(addr, tlsCertPath, macaroonPath string) error {
-	_, err := connectToDcrlnd(addr, tlsCertPath, macaroonPath)
-	return err
 }
 
 // isConnectedToNode returns true if the server is connected to the specified

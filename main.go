@@ -108,7 +108,7 @@ func _main() error {
 	svr := &http.Server{
 		Handler: handler(drsvr),
 	}
-	listeners, err := cfg.listeners()
+	listeners, err := cfg.listeners(ctx)
 	if err != nil {
 		log.Error(err.Error())
 		return err

@@ -37,7 +37,7 @@ func (v1 *V1Handler) handleInvoice(req *http.Request) (interface{}, error) {
 
 	var res lprpc_v1.InvoiceResponse
 	var err error
-	res.Invoice, err = v1.Server.CreateInvoice(req.Context(), reqInv.TargetNode, reqInv.ChannelSize)
+	res.Invoice, err = v1.CreateInvoice(req.Context(), reqInv.TargetNode, reqInv.ChannelSize)
 
 	return res, err
 }

@@ -305,6 +305,7 @@ func (c *Client) RequestChannel(ctx context.Context, channelSize uint64) error {
 		PaymentRequest: invoiceRes.Invoice,
 		FeeLimit:       &lnrpc.FeeLimit{Limit: &lnrpc.FeeLimit_Fixed{Fixed: feeLimitAtoms}},
 	}
+	// nolint:staticcheck
 	payStream, err := c.lc.SendPayment(ctx)
 	if err != nil {
 		return err

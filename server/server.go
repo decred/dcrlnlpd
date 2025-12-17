@@ -388,15 +388,15 @@ nextConn:
 				continue nextConn
 			}
 
-			switch {
-			case inv.State == lnrpc.Invoice_CANCELED:
+			switch inv.State {
+			case lnrpc.Invoice_CANCELED:
 				fpath := filepath.Join(s.root, invoicesDir,
 					hex.EncodeToString(inv.RHash))
 				if err := s.removeFile(fpath); err != nil {
 					return err
 				}
 
-			case inv.State == lnrpc.Invoice_SETTLED:
+			case lnrpc.Invoice_SETTLED:
 				fpath := filepath.Join(s.root, invoicesDir,
 					hex.EncodeToString(inv.RHash))
 				var winv waitingInvoice
